@@ -272,7 +272,8 @@ renderCUDA(
 	uint32_t* __restrict__ n_contrib,
 	const float* __restrict__ bg_color,
 	float* __restrict__ out_color,
-	float* __restrict__ out_depth)
+	float* __restrict__ out_depth,
+	const bool train)
 {
 	// Identify current tile and associated min/max pixel range.
 	auto block = cg::this_thread_block();
@@ -304,7 +305,13 @@ renderCUDA(
 	uint32_t last_contributor = 0;
 	float C[CHANNELS] = { 0 };
 	float weight = 0;
-	float D = 0;
+	
+	float D;
+	if(train){
+		D = 0.0f;
+	}else{
+		D = 15.0f;
+	}
 
 	// Iterate over batches until all done or range is complete
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
@@ -357,8 +364,20 @@ renderCUDA(
 			// Eq. (3) from 3D Gaussian splatting paper.
 			for (int ch = 0; ch < CHANNELS; ch++)
 				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
-			weight += alpha * T;
-			D += depths[collected_id[j]] * alpha * T;
+
+			// If train, use mean. If visualise, use median.
+			if(train){
+				weight += alpha * T;
+				D += depths[collected_id[j]] * alpha * T;
+			}else{
+				// Median depth:
+				if (T > 0.5f && test_T < 0.5)
+				{
+					float dep = depths[collected_id[j]];
+					D = dep;
+				}
+			}
+
 
 			T = test_T;
 
@@ -393,7 +412,8 @@ void FORWARD::render(
 	uint32_t* n_contrib,
 	const float* bg_color,
 	float* out_color,
-	float* out_depth)
+	float* out_depth,
+	const bool train)
 {
 	renderCUDA<NUM_CHANNELS> << <grid, block >> > (
 		ranges,
@@ -407,7 +427,8 @@ void FORWARD::render(
 		n_contrib,
 		bg_color,
 		out_color,
-		out_depth);
+		out_depth,
+		train);
 }
 
 void FORWARD::preprocess(int P, int D, int M,

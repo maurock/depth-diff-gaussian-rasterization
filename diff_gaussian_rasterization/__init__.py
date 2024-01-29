@@ -28,6 +28,7 @@ def rasterize_gaussians(
     rotations,
     cov3Ds_precomp,
     raster_settings,
+    train
 ):
     return _RasterizeGaussians.apply(
         means3D,
@@ -39,6 +40,7 @@ def rasterize_gaussians(
         rotations,
         cov3Ds_precomp,
         raster_settings,
+        train
     )
 
 class _RasterizeGaussians(torch.autograd.Function):
@@ -54,6 +56,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         rotations,
         cov3Ds_precomp,
         raster_settings,
+        train
     ):
 
         # Restructure arguments the way that the C++ lib expects them
@@ -76,7 +79,8 @@ class _RasterizeGaussians(torch.autograd.Function):
             raster_settings.sh_degree,
             raster_settings.campos,
             raster_settings.prefiltered,
-            raster_settings.debug
+            raster_settings.debug,
+            train
         )
 
         # Invoke C++/CUDA rasterizer
@@ -153,6 +157,7 @@ class _RasterizeGaussians(torch.autograd.Function):
             grad_rotations,
             grad_cov3Ds_precomp,
             None,
+            None
         )
 
         return grads
@@ -172,9 +177,10 @@ class GaussianRasterizationSettings(NamedTuple):
     debug : bool
 
 class GaussianRasterizer(nn.Module):
-    def __init__(self, raster_settings):
+    def __init__(self, raster_settings, train):
         super().__init__()
         self.raster_settings = raster_settings
+        self.train = train
 
     def markVisible(self, positions):
         # Mark visible points (based on frustum culling for camera) with a boolean 
@@ -220,5 +226,6 @@ class GaussianRasterizer(nn.Module):
             rotations,
             cov3D_precomp,
             raster_settings, 
+            self.train
         )
 
